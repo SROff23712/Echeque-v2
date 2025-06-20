@@ -1,0 +1,83 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Échecs 1v1 – Google</title>
+  <style>
+    body { background: #111; color: #eee; font-family: sans-serif; text-align: center; }
+    #board { width: 400px; margin: 20px auto; }
+  </style>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.13.4/chess.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard.min.css">
+</head>
+<body>
+  <h1>Échecs 1v1</h1>
+
+  <div id="g_id_onload"
+       data-client_id="⚠️TON_CLIENT_ID_GOOGLE"
+       data-callback="handleCredentialResponse">
+  </div>
+  <div class="g_id_signin" data-type="standard"></div>
+
+  <div id="players">En attente de connexion…</div>
+  <div id="board"></div>
+  <div id="status">Non connecté</div>
+
+  <script>
+    let game, board, socket, color, profile;
+
+    function handleCredentialResponse(response) {
+      const payload = JSON.parse(atob(response.credential.split('.')[1]));
+      profile = { name: payload.name, email: payload.email };
+      startSocket();
+    }
+
+    function startSocket() {
+      socket = new WebSocket('wss://⚠️TON_TUNNEL_NGROK');
+
+      socket.onopen = () => {
+        socket.send(JSON.stringify({ type: "login", profile }));
+        document.getElementById('status').textContent = "Connecté, attente adversaire…";
+      };
+
+      socket.onmessage = msg => {
+        const data = JSON.parse(msg.data);
+
+        if (data.type === "players") {
+          document.getElementById('players').textContent =
+            `Blancs: ${data.players.w?.name || '…'} | Noirs: ${data.players.b?.name || '…'}`;
+        }
+
+        if (data.type === "start") {
+          color = data.color;
+          game = new Chess();
+          board = Chessboard('board', {
+            draggable: true,
+            orientation: color === 'w' ? 'white' : 'black',
+            position: 'start',
+            onDragStart: (src, piece) => {
+              if (game.turn() !== color || piece[0] !== color || game.game_over()) return false;
+            },
+            onDrop: (src, tgt) => {
+              const move = game.move({ from: src, to: tgt, promotion: 'q' });
+              if (!move) return 'snapback';
+              socket.send(JSON.stringify({ type: 'move', move }));
+            }
+          });
+          document.getElementById('status').textContent = `Partie lancée, tu es les ${color === 'w' ? 'blancs' : 'noirs'}`;
+        }
+
+        if (data.type === "move") {
+          game.move(data.move);
+          board.position(game.fen());
+          document.getElementById('status').textContent =
+            game.turn() === color ? "À ton tour" : "Tour de l'adversaire";
+        }
+      };
+    }
+  </script>
+</body>
+</html>
